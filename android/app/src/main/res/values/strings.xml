@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">88Rcan Live</string>
+    <string name="section_camera">Câmera</string>
+    <string name="camera_url_hint">rtsp://192.168.1.10:554/stream1</string>
+    <string name="camera_user_hint">Usuário da câmera (opcional)</string>
+    <string name="camera_pass_hint">Senha da câmera (opcional)</string>
+    <string name="section_youtube">YouTube</string>
+    <string name="server_url_hint">URL do servidor</string>
+    <string name="stream_key_hint">Chave da transmissão</string>
+    <string name="section_options">Opções</string>
+    <string name="audio_label">Enviar áudio da câmera (AAC)</string>
+    <string name="split_network_label">Câmera no Wi-Fi dela, internet pelos dados móveis</string>
+    <string name="split_network_help">Marque quando o celular estiver conectado ao Wi-Fi da própria câmera. Se a câmera estiver conectada ao roteador do celular, deixe desmarcado.</string>
+    <string name="start">Iniciar live</string>
+    <string name="stop">Parar</string>
+    <string name="battery_settings">Liberar app da economia de bateria</string>
+    <string name="idle">Parado</string>
+</resources>
