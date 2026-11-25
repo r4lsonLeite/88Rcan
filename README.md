@@ -22,7 +22,7 @@ pouca bateria, esquenta pouco e mantém a qualidade original da câmera.
 
 ## Começo rápido
 
-### 1. Testar o motor no PC (JDK 17+, ffmpeg)
+### 1. Testar o motor no PC (JDK 17 a 25, ffmpeg)
 
 ```bash
 cd core
