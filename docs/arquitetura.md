@@ -21,9 +21,10 @@ para o protocolo que o YouTube aceita. Ele **não decodifica nem recodifica** o 
 | Aquecimento | significativo em lives longas | mínimo |
 | Qualidade | perde uma geração | idêntica à da câmera |
 | Latência | +200–500 ms | +poucos ms |
-| Limitação | — | a câmera precisa entregar **H.264** (+ **AAC** p/ áudio) e o **bitrate é definido na câmera** |
+| Limitação | — | a câmera precisa entregar **H.264 ou H.265** (+ **AAC** p/ áudio) e o **bitrate é definido na câmera** |
 
-A limitação é aceitável: quase toda câmera IP permite escolher H.264 e o bitrate no próprio menu.
+A limitação é aceitável: praticamente toda câmera IP entrega H.264 ou H.265. H.265 vai ao YouTube pelo
+*Enhanced RTMP* (o mesmo mecanismo que o OBS usa para HEVC), sem recodificar.
 
 ## Componentes
 
@@ -32,9 +33,9 @@ A limitação é aceitável: quase toda câmera IP permite escolher H.264 e o bi
 | Pacote | Responsabilidade |
 |---|---|
 | `rtsp` | `RtspClient`: OPTIONS → DESCRIBE → SETUP → PLAY, RTP intercalado no TCP, Basic/Digest, keep-alive. `SdpParser`. |
-| `rtp` | `H264Depacketizer` (NAL único, STAP-A, FU-A; descarta frames após perda até o próximo IDR), `AacDepacketizer` (RFC 3640). |
-| `media` | Tipos de frame/config, `SpsParser` (resolução para o painel e metadados). |
-| `rtmp` | `RtmpPublisher` (handshake, chunks, AMF0, RTMP e **RTMPS**), `FlvTags`. |
+| `rtp` | `H264Depacketizer` (RFC 6184) e `H265Depacketizer` (RFC 7798: AP, FU) sobre uma base comum que descarta frames após perda até o próximo keyframe; `AacDepacketizer` (RFC 3640). |
+| `media` | Tipos de frame/config, `SpsParser` (H.264) e `HevcSpsParser` (H.265: resolução, perfil e campos do hvcC). |
+| `rtmp` | `RtmpPublisher` (handshake, chunks, AMF0, RTMP e **RTMPS**, `fourCcList` do Enhanced RTMP), `FlvTags` (AVC clássico e HEVC via Enhanced RTMP `hvc1`). |
 | `relay` | `RelayEngine`: orquestra tudo, reconexão automática, controle de congestionamento, estatísticas. |
 | `cli` | Executável para PC/Raspberry Pi — o mesmo motor, útil para testes de bancada. |
 
@@ -77,7 +78,7 @@ Câmera e celular no mesmo roteador 4G. Equivalente à topologia A, com antena/b
 
 ## Limitações conhecidas (v0.1) e próximos passos
 
-- **H.265/HEVC:** não suportado ainda → configurar a câmera para H.264. Próximo passo: Enhanced RTMP (o YouTube aceita HEVC).
+- **H.265/HEVC:** suportado via Enhanced RTMP; validado localmente (ffmpeg como receptor), **ainda não validado no YouTube real**.
 - **Áudio G.711 (PCMA/PCMU)**, comum em câmeras baratas: o YouTube não aceita; hoje a live segue só com vídeo.
   Próximo passo: transcodificar G.711 → AAC com `MediaCodec` (custo baixo, é só áudio).
 - **B-frames:** assume DTS = PTS (câmeras IP normalmente não usam B-frames).

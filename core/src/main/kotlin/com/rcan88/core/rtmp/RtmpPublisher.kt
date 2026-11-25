@@ -53,6 +53,8 @@ class RtmpPublisher(
     private val socketFactory: SocketFactory = SocketFactory.getDefault(),
     private val timeoutMs: Int = 10_000,
     private val onLog: (String) -> Unit = {},
+    /** FourCCs do Enhanced RTMP anunciados no connect (ex.: "hvc1" para HEVC). */
+    private val fourCcList: List<String> = emptyList(),
 ) {
     private val target = RtmpUrl.parse(url)
     private var socket: Socket? = null
@@ -94,15 +96,14 @@ class RtmpPublisher(
         handshake()
         setChunkSize(4096)
 
-        command(
-            "connect", ++txn,
-            mapOf(
-                "app" to target.app,
-                "type" to "nonprivate",
-                "flashVer" to "FMLE/3.0 (compatible; 88Rcan)",
-                "tcUrl" to target.tcUrl,
-            ),
+        val connectObj = linkedMapOf<String, Any?>(
+            "app" to target.app,
+            "type" to "nonprivate",
+            "flashVer" to "FMLE/3.0 (compatible; 88Rcan)",
+            "tcUrl" to target.tcUrl,
         )
+        if (fourCcList.isNotEmpty()) connectObj["fourCcList"] = fourCcList
+        command("connect", ++txn, connectObj)
         expectResult("connect")
 
         command("releaseStream", ++txn, null, target.stream)

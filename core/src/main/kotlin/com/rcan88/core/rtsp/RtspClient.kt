@@ -2,11 +2,13 @@ package com.rcan88.core.rtsp
 
 import com.rcan88.core.media.AudioConfig
 import com.rcan88.core.media.AudioFrame
-import com.rcan88.core.media.H264
+import com.rcan88.core.media.VideoCodec
 import com.rcan88.core.media.VideoConfig
 import com.rcan88.core.media.VideoFrame
 import com.rcan88.core.rtp.AacDepacketizer
 import com.rcan88.core.rtp.H264Depacketizer
+import com.rcan88.core.rtp.H265Depacketizer
+import com.rcan88.core.rtp.ParamSet
 import com.rcan88.core.rtp.RtpPacket
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
@@ -34,7 +36,7 @@ interface RtspListener {
  * Cliente RTSP mínimo que "puxa" o fluxo de uma câmera IP usando RTP intercalado no TCP
  * (RTP/AVP/TCP) — mais robusto que UDP em redes Wi-Fi e atravessa NAT sem configuração.
  *
- * Suporta: H.264 (vídeo) e AAC mpeg4-generic (áudio), autenticação Basic/Digest.
+ * Suporta: H.264 e H.265/HEVC (vídeo), AAC mpeg4-generic (áudio), autenticação Basic/Digest.
  */
 class RtspClient(
     url: String,
@@ -62,6 +64,8 @@ class RtspClient(
     private val tracks = HashMap<Int, Track>() // canal RTP -> trilha
     private var playStartNs = 0L
 
+    private var codec = VideoCodec.H264
+    private var vps: ByteArray? = null
     private var sps: ByteArray? = null
     private var pps: ByteArray? = null
     private var currentVideoConfig: VideoConfig? = null
@@ -87,9 +91,9 @@ class RtspClient(
 
             val video = sdp.media.firstOrNull { it.type == "video" }
                 ?: throw RtspException("A câmera não oferece trilha de vídeo")
-            if (video.encoding != "H264") {
+            if (video.encoding != "H264" && video.encoding != "H265") {
                 throw RtspException(
-                    "Codec de vídeo '${video.encoding}' não suportado. Configure a câmera para H.264."
+                    "Codec de vídeo '${video.encoding}' não suportado. Configure a câmera para H.264 ou H.265."
                 )
             }
             setupVideo(video, sessionBase)
@@ -127,17 +131,28 @@ class RtspClient(
     // ---------------------------------------------------------------- setup
 
     private fun setupVideo(m: SdpMedia, base: String) {
-        m.fmtp["sprop-parameter-sets"]?.let { sprop ->
-            sprop.split(',').forEach { b64 ->
-                val nal = runCatching { Base64.getDecoder().decode(b64.trim()) }.getOrNull() ?: return@forEach
-                onParameterSet(H264.nalType(nal), nal)
+        codec = if (m.encoding == "H265") VideoCodec.H265 else VideoCodec.H264
+        fun decode(b64: String) = runCatching { Base64.getDecoder().decode(b64.trim()) }.getOrNull()
+        if (codec == VideoCodec.H264) {
+            m.fmtp["sprop-parameter-sets"]?.split(',')?.forEach { b64 ->
+                val nal = decode(b64) ?: return@forEach
+                when (nal.firstOrNull()?.toInt()?.and(0x1F)) {
+                    7 -> onParameterSet(ParamSet.SPS, nal)
+                    8 -> onParameterSet(ParamSet.PPS, nal)
+                }
             }
+        } else {
+            m.fmtp["sprop-vps"]?.let { decode(it) }?.let { onParameterSet(ParamSet.VPS, it) }
+            m.fmtp["sprop-sps"]?.let { decode(it) }?.let { onParameterSet(ParamSet.SPS, it) }
+            m.fmtp["sprop-pps"]?.let { decode(it) }?.let { onParameterSet(ParamSet.PPS, it) }
         }
         val channel = tracks.size * 2
         val track = Track(m.clockRate.takeIf { it > 0 } ?: 90000)
-        val depack = H264Depacketizer(::onParameterSet) { nalus, ts, key ->
+        val onFrame = { nalus: List<ByteArray>, ts: Long, key: Boolean ->
             listener.onVideoFrame(VideoFrame(nalus, track.ptsMs(ts), key))
         }
+        val depack = if (codec == VideoCodec.H264) H264Depacketizer(::onParameterSet, onFrame)
+        else H265Depacketizer(::onParameterSet, onFrame)
         track.push = depack::push
         track.lostPackets = { depack.lostPackets }
         setup(SdpParser.resolveControl(base, m.control), channel)
@@ -177,15 +192,16 @@ class RtspClient(
         }
     }
 
-    private fun onParameterSet(type: Int, nal: ByteArray) {
-        when (type) {
-            H264.NAL_SPS -> sps = nal
-            H264.NAL_PPS -> pps = nal
-            else -> return
+    private fun onParameterSet(kind: ParamSet, nal: ByteArray) {
+        when (kind) {
+            ParamSet.VPS -> vps = nal
+            ParamSet.SPS -> sps = nal
+            ParamSet.PPS -> pps = nal
         }
         val s = sps ?: return
         val p = pps ?: return
-        val cfg = VideoConfig(s, p)
+        if (codec == VideoCodec.H265 && vps == null) return
+        val cfg = VideoConfig(s, p, codec, if (codec == VideoCodec.H265) vps else null)
         if (!cfg.sameAs(currentVideoConfig)) {
             currentVideoConfig = cfg
             listener.onVideoConfig(cfg)

@@ -1,6 +1,12 @@
 package com.rcan88.core
 
 import com.rcan88.core.media.AudioConfig
+import com.rcan88.core.media.HevcSpsParser
+import com.rcan88.core.media.VideoCodec
+import com.rcan88.core.media.VideoConfig
+import com.rcan88.core.rtmp.FlvTags
+import com.rcan88.core.rtp.H265Depacketizer
+import com.rcan88.core.rtp.ParamSet
 import com.rcan88.core.media.SpsParser
 import com.rcan88.core.rtmp.Amf0
 import com.rcan88.core.rtmp.RtmpUrl
@@ -104,7 +110,7 @@ class CoreTest {
     @Test fun `H264 FU-A STAP-A e perda de pacote`() {
         val sps = byteArrayOf(0x67, 1, 2, 3); val pps = byteArrayOf(0x68, 4)
         val idr = ByteArray(3000) { if (it == 0) 0x65 else (it % 251).toByte() }
-        val params = ArrayList<Int>()
+        val params = ArrayList<ParamSet>()
         val frames = ArrayList<Pair<List<ByteArray>, Boolean>>()
         val d = H264Depacketizer({ t, _ -> params.add(t) }) { n, _, k -> frames.add(n to k) }
 
@@ -117,7 +123,7 @@ class CoreTest {
             val s = if (i == 0) 0x80 else 0; val e = if (i == chunks.lastIndex) 0x40 else 0
             d.push(rtp(2 + i, 1000, i == chunks.lastIndex, byteArrayOf(0x7C, (s or e or 5).toByte()) + c))
         }
-        assertEquals(listOf(7, 8), params)
+        assertEquals(listOf(ParamSet.SPS, ParamSet.PPS), params)
         assertEquals(1, frames.size); assertTrue(frames[0].second)
         assertContentEquals(idr, frames[0].first[0])
 
@@ -140,6 +146,52 @@ class CoreTest {
         val headers = byteArrayOf(0, 32, (5 shr 5).toByte(), ((5 shl 3) and 0xFF).toByte(), (7 shr 5).toByte(), ((7 shl 3) and 0xFF).toByte())
         d.push(rtp(1, 5000, true, headers + ByteArray(5) + ByteArray(7), 97))
         assertEquals(listOf(5 to 5000L, 7 to 6024L), got)
+    }
+
+    private val hevcVps = hex("40010c01ffff016000000300900000030000030096959809")
+    private val hevcSps = hex("420101016000000300900000030000030096a003c080087165959a4932bc05a020000003002000000301e1")
+
+    @Test fun `SPS HEVC 1920x2160 (camera dupla lente)`() {
+        val info = HevcSpsParser.parse(hevcSps)
+        assertEquals(1920, info.width); assertEquals(2160, info.height)
+        assertEquals(1, info.profileIdc) // Main
+        assertEquals(1, info.chromaFormatIdc); assertEquals(0, info.bitDepthLumaMinus8)
+    }
+
+    @Test fun `hvcC no Enhanced RTMP`() {
+        val cfg = VideoConfig(hevcSps, byteArrayOf(0x44, 0x01, 0xC1.toByte()), VideoCodec.H265, hevcVps)
+        val tag = FlvTags.videoSequenceHeader(cfg)
+        assertEquals(0x90, tag[0].toInt() and 0xFF) // ex-header + keyframe + SequenceStart
+        assertEquals("hvc1", String(tag, 1, 4))
+        assertEquals(1, tag[5].toInt()) // configurationVersion
+        assertEquals(3, tag[27].toInt()) // numOfArrays
+        assertEquals(0x80 or 32, tag[28].toInt() and 0xFF) // primeiro array = VPS
+        val frame = FlvTags.videoFrame(VideoCodec.H265, listOf(byteArrayOf(0x26, 0x01, 9)), keyframe = false)
+        assertEquals(0xA1, frame[0].toInt() and 0xFF) // ex-header + inter + CodedFrames
+    }
+
+    @Test fun `H265 AP e FU`() {
+        val params = ArrayList<ParamSet>()
+        val frames = ArrayList<Pair<List<ByteArray>, Boolean>>()
+        val d = H265Depacketizer({ k, _ -> params.add(k) }) { n, _, k -> frames.add(n to k) }
+        val pps = byteArrayOf(0x44, 0x01, 0xC1.toByte())
+        // AP (tipo 48) com VPS+SPS+PPS
+        val ap = byteArrayOf(0x60, 0x01) + listOf(hevcVps, hevcSps, pps).flatMap {
+            listOf((it.size shr 8).toByte(), it.size.toByte()) + it.toList()
+        }.toByteArray()
+        d.push(rtp(1, 9000, false, ap))
+        // IDR_W_RADL (tipo 19) fragmentado em FU (tipo 49)
+        val idr = ByteArray(2500) { when (it) { 0 -> 0x26; 1 -> 0x01; else -> (it % 249).toByte() } }
+        val chunks = idr.copyOfRange(2, idr.size).toList().chunked(1000).map { it.toByteArray() }
+        chunks.forEachIndexed { i, c ->
+            val s = if (i == 0) 0x80 else 0; val e = if (i == chunks.lastIndex) 0x40 else 0
+            d.push(rtp(2 + i, 9000, i == chunks.lastIndex, byteArrayOf(0x62, 0x01, (s or e or 19).toByte()) + c))
+        }
+        assertEquals(listOf(ParamSet.VPS, ParamSet.SPS, ParamSet.PPS), params)
+        assertEquals(1, frames.size); assertTrue(frames[0].second)
+        assertContentEquals(idr, frames[0].first[0])
+        d.push(rtp(5, 15000, true, byteArrayOf(0x02, 0x01, 5))) // TRAIL_R
+        assertEquals(2, frames.size); assertFalse(frames[1].second)
     }
 
     @Test fun `timestamp RTP com wraparound`() {

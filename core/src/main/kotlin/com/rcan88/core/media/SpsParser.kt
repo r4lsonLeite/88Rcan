@@ -86,7 +86,7 @@ object SpsParser {
         return out.toByteArray()
     }
 
-    private class BitReader(private val data: ByteArray) {
+    internal class BitReader(private val data: ByteArray) {
         private var pos = 0
 
         fun bits(n: Int): Int {
@@ -114,5 +114,62 @@ object SpsParser {
             val k = ue()
             return if (k and 1 == 1) (k + 1) / 2 else -(k / 2)
         }
+    }
+}
+
+data class HevcSpsInfo(
+    val profileIdc: Int,
+    val levelIdc: Int,
+    val width: Int,
+    val height: Int,
+    val chromaFormatIdc: Int,
+    val bitDepthLumaMinus8: Int,
+    val bitDepthChromaMinus8: Int,
+    val maxSubLayersMinus1: Int,
+    val temporalIdNesting: Int,
+    /** 12 bytes do general_profile_tier_level (perfil, tier, flags, nível) — vão direto no hvcC. */
+    val generalPtl: ByteArray,
+)
+
+/** Lê os campos do SPS H.265 (ITU-T H.265 7.3.2.2) necessários para o hvcC e o painel. */
+object HevcSpsParser {
+    fun parse(sps: ByteArray): HevcSpsInfo {
+        val rbsp = SpsParser.removeEmulationPrevention(sps)
+        val r = SpsParser.BitReader(rbsp)
+        r.skip(16) // nal header
+        r.skip(4) // sps_video_parameter_set_id
+        val maxSubLayersMinus1 = r.bits(3)
+        val nesting = r.bits(1)
+        val ptl = rbsp.copyOfRange(3, 15)
+        r.skip(8) // profile_space, tier, profile_idc
+        val profileIdc = ptl[0].toInt() and 0x1F
+        r.skip(32 + 48)
+        val levelIdc = r.bits(8)
+        val subProfile = BooleanArray(maxSubLayersMinus1)
+        val subLevel = BooleanArray(maxSubLayersMinus1)
+        for (i in 0 until maxSubLayersMinus1) {
+            subProfile[i] = r.bits(1) == 1
+            subLevel[i] = r.bits(1) == 1
+        }
+        if (maxSubLayersMinus1 > 0) for (i in maxSubLayersMinus1 until 8) r.skip(2)
+        for (i in 0 until maxSubLayersMinus1) {
+            if (subProfile[i]) r.skip(88)
+            if (subLevel[i]) r.skip(8)
+        }
+        r.ue() // sps_seq_parameter_set_id
+        val chroma = r.ue()
+        if (chroma == 3) r.skip(1)
+        var width = r.ue()
+        var height = r.ue()
+        if (r.bits(1) == 1) { // conformance_window_flag
+            val subW = if (chroma == 1 || chroma == 2) 2 else 1
+            val subH = if (chroma == 1) 2 else 1
+            val l = r.ue(); val rt = r.ue(); val t = r.ue(); val b = r.ue()
+            width -= subW * (l + rt)
+            height -= subH * (t + b)
+        }
+        val bdl = r.ue()
+        val bdc = r.ue()
+        return HevcSpsInfo(profileIdc, levelIdc, width, height, chroma, bdl, bdc, maxSubLayersMinus1, nesting, ptl)
     }
 }

@@ -2,6 +2,7 @@ package com.rcan88.core.relay
 
 import com.rcan88.core.media.AudioConfig
 import com.rcan88.core.media.AudioFrame
+import com.rcan88.core.media.VideoCodec
 import com.rcan88.core.media.VideoConfig
 import com.rcan88.core.media.VideoFrame
 import com.rcan88.core.rtmp.FlvTags
@@ -56,7 +57,7 @@ interface RelayListener {
 /**
  * Motor de retransmissão: câmera (RTSP) → celular → YouTube (RTMP/RTMPS), sem recodificar.
  *
- * - Reenvia o H.264/AAC da câmera como está: CPU e bateria mínimas, qualidade original.
+ * - Reenvia o H.264/H.265 (+AAC) da câmera como está: CPU e bateria mínimas, qualidade original.
  * - Reconecta sozinho (câmera ou internet) com backoff.
  * - Se a internet móvel ficar lenta e a fila passar de [RelayConfig.maxQueueMs], descarta
  *   frames até o próximo keyframe para manter a live "ao vivo" em vez de acumular atraso.
@@ -183,7 +184,7 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
         while (running) {
             val item = queue.poll(500, TimeUnit.MILLISECONDS)
             if (publisher == null && System.currentTimeMillis() > connectDeadline) {
-                throw RtspException("A câmera não enviou vídeo H.264 válido (sem SPS/PPS ou keyframe)")
+                throw RtspException("A câmera não enviou vídeo válido (sem parameter sets ou keyframe)")
             }
             when (item) {
                 null -> Unit
@@ -193,7 +194,7 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
                     videoCfg = item.config
                     videoDesc = item.config.toString()
                     listener.onLog("Vídeo: $videoDesc")
-                    if (changed && publisher != null) publisher.sendVideo(FlvTags.avcSequenceHeader(item.config), lastVideoTs)
+                    if (changed && publisher != null) publisher.sendVideo(FlvTags.videoSequenceHeader(item.config), lastVideoTs)
                 }
                 is Item.AConfig -> {
                     audioCfg = item.config
@@ -206,11 +207,14 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
                     if (publisher == null) {
                         if (!item.frame.keyframe) continue // começa a live sempre num keyframe
                         setState(RelayState.CONNECTING_SERVER)
-                        publisher = RtmpPublisher(config.targetUrl, config.targetSocketFactory, config.timeoutMs, listener::onLog)
+                        publisher = RtmpPublisher(
+                            config.targetUrl, config.targetSocketFactory, config.timeoutMs, listener::onLog,
+                            fourCcList = if (vcfg.codec == VideoCodec.H265) listOf("hvc1") else emptyList(),
+                        )
                         rtmp = publisher
                         publisher.connect()
                         publisher.sendMetadata(FlvTags.metadata(vcfg, audioCfg))
-                        publisher.sendVideo(FlvTags.avcSequenceHeader(vcfg), 0)
+                        publisher.sendVideo(FlvTags.videoSequenceHeader(vcfg), 0)
                         audioCfg?.let { publisher.sendAudio(FlvTags.aacSequenceHeader(it), 0) }
                         baseTs = item.frame.ptsMs
                         liveSinceMs = System.currentTimeMillis()
@@ -221,7 +225,7 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
                     }
                     val ts = maxOf(item.frame.ptsMs - baseTs, lastVideoTs)
                     lastVideoTs = ts
-                    publisher.sendVideo(FlvTags.avcFrame(item.frame.nalus, item.frame.keyframe), ts)
+                    publisher.sendVideo(FlvTags.videoFrame(vcfg.codec, item.frame.nalus, item.frame.keyframe), ts)
                     statFrames++
                 }
                 is Item.Audio -> {

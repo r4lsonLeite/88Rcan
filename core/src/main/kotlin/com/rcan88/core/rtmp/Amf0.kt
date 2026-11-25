@@ -29,6 +29,11 @@ object Amf0 {
                 out.write(ByteBuffer.allocate(4).putInt(v.entries.size).array())
                 writeProps(out, v.entries)
             }
+            is List<*> -> { // strict array
+                out.write(0x0A)
+                out.write(ByteBuffer.allocate(4).putInt(v.size).array())
+                v.forEach { write(out, it) }
+            }
             is Map<*, *> -> {
                 out.write(0x03)
                 @Suppress("UNCHECKED_CAST")

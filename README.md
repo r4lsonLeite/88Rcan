@@ -1,6 +1,6 @@
 # 88Rcan — Live portátil de baixo custo (câmera → celular → YouTube)
 
-Sistema experimental para transmitir ao vivo no YouTube usando **qualquer câmera com RTSP/H.264**
+Sistema experimental para transmitir ao vivo no YouTube usando **qualquer câmera com RTSP (H.264 ou H.265)**
 e um **celular Android com internet móvel** como ponte — sem notebook, sem placa de captura,
 sem depender de marca de câmera.
 
@@ -15,7 +15,7 @@ pouca bateria, esquenta pouco e mantém a qualidade original da câmera.
 
 | Pasta | Conteúdo |
 |---|---|
-| [`core/`](core) | Motor de streaming em Kotlin puro (sem dependências): cliente RTSP (Basic/Digest, RTP sobre TCP), depacketizadores H.264/AAC, publicador RTMP/**RTMPS**, reconexão automática, controle de congestionamento, estatísticas. Também roda em PC/Raspberry Pi pela linha de comando. |
+| [`core/`](core) | Motor de streaming em Kotlin puro (sem dependências): cliente RTSP (Basic/Digest, RTP sobre TCP), depacketizadores H.264/H.265/AAC, publicador RTMP/**RTMPS**, reconexão automática, controle de congestionamento, estatísticas. Também roda em PC/Raspberry Pi pela linha de comando. |
 | [`android/`](android) | App de operação: tela de configuração e status, serviço em primeiro plano com WakeLock/WifiLock, notificação com botão Parar, roteamento câmera-pelo-Wi-Fi + YouTube-pelos-dados-móveis, bateria e temperatura no painel. |
 | [`tools/`](tools) | Câmera RTSP simulada e teste de ponta a ponta local. |
 | [`docs/`](docs) | [Arquitetura](docs/arquitetura.md) · [Câmeras compatíveis](docs/cameras-compativeis.md) · [Equipamentos](docs/equipamentos.md) · [Roteiro de testes até a 1ª live](docs/roteiro-de-testes.md) |
@@ -28,6 +28,7 @@ pouca bateria, esquenta pouco e mantém a qualidade original da câmera.
 cd core
 ./gradlew test                 # testes unitários
 ../tools/e2e_local.sh          # câmera simulada → motor → servidor RTMP local
+PROFILE=yoosee ../tools/e2e_local.sh   # idem, simulando câmera Yoosee (H.265 1920x2160 + G.711)
 ```
 
 Com uma câmera real e sua chave do YouTube:
@@ -47,12 +48,13 @@ build/install/core/bin/core \
 
 ## Requisitos da câmera (resumo)
 
-RTSP com **H.264** (H.265 ainda não), áudio **AAC** se quiser som, keyframe a cada **2 s**,
+RTSP com **H.264 ou H.265**, áudio **AAC** se quiser som, keyframe a cada **2 s**,
 bitrate **CBR** de 60–70 % do upload disponível. Detalhes e URLs por fabricante em
 [docs/cameras-compativeis.md](docs/cameras-compativeis.md).
 
 ## Situação
 
-- ✅ Motor validado localmente: testes unitários e pipeline ponta a ponta (H.264 720p30 + AAC, 0 erros de decodificação) e reconexão automática após queda do servidor.
+- ✅ Motor validado localmente: testes unitários e pipeline ponta a ponta — H.264 720p30 + AAC e H.265 1920×2160 15 fps (perfil Yoosee) — com 0 erros de decodificação, e reconexão automática após queda do servidor.
+- ✅ Câmera Yoosee real: RTSP confirmado no VLC (H.265 + G.711).
 - ⚠️ App Android escrito mas **ainda não compilado/testado em aparelho** (o ambiente de desenvolvimento não tinha o Android SDK). Primeira tarefa da Fase 3 do roteiro.
 - ⏳ Testes com câmera real, YouTube e 4G: ver [roteiro](docs/roteiro-de-testes.md).

@@ -1,14 +1,26 @@
 package com.rcan88.core.media
 
-/** Configuração do vídeo H.264 (parameter sets). */
-class VideoConfig(val sps: ByteArray, val pps: ByteArray) {
-    val info: SpsInfo? = runCatching { SpsParser.parse(sps) }.getOrNull()
+enum class VideoCodec(val label: String) { H264("H.264"), H265("H.265/HEVC") }
+
+/** Configuração do vídeo (parameter sets). [vps] só existe em H.265. */
+class VideoConfig(
+    val sps: ByteArray,
+    val pps: ByteArray,
+    val codec: VideoCodec = VideoCodec.H264,
+    val vps: ByteArray? = null,
+) {
+    val info: SpsInfo? = runCatching {
+        if (codec == VideoCodec.H264) SpsParser.parse(sps) else HevcSpsParser.parse(sps).let {
+            SpsInfo(it.profileIdc, it.levelIdc, it.width, it.height)
+        }
+    }.getOrNull()
 
     fun sameAs(other: VideoConfig?): Boolean =
-        other != null && sps.contentEquals(other.sps) && pps.contentEquals(other.pps)
+        other != null && codec == other.codec && sps.contentEquals(other.sps) && pps.contentEquals(other.pps) &&
+            (vps ?: ByteArray(0)).contentEquals(other.vps ?: ByteArray(0))
 
     override fun toString(): String =
-        info?.let { "H.264 ${it.width}x${it.height} (profile ${it.profileIdc}, level ${it.levelIdc})" } ?: "H.264"
+        info?.let { "${codec.label} ${it.width}x${it.height} (profile ${it.profileIdc}, level ${it.levelIdc})" } ?: codec.label
 }
 
 /** Configuração do áudio AAC (AudioSpecificConfig). */
@@ -53,4 +65,16 @@ object H264 {
     const val NAL_AUD = 9
 
     fun nalType(nal: ByteArray): Int = if (nal.isEmpty()) -1 else nal[0].toInt() and 0x1F
+}
+
+object H265 {
+    const val NAL_VPS = 32
+    const val NAL_SPS = 33
+    const val NAL_PPS = 34
+    const val NAL_AUD = 35
+    const val NAL_AP = 48
+    const val NAL_FU = 49
+    const val NAL_PACI = 50
+
+    fun nalType(nal: ByteArray): Int = if (nal.isEmpty()) -1 else (nal[0].toInt() shr 1) and 0x3F
 }
