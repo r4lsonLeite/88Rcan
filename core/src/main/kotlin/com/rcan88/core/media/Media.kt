@@ -42,6 +42,12 @@ class AudioConfig(val asc: ByteArray) {
     override fun toString(): String = "AAC ${sampleRate}Hz ${channels}ch"
 
     companion object {
+        /** AAC-LC, 44,1 kHz, mono. */
+        val SILENT_CONFIG get() = AudioConfig(byteArrayOf(0x12, 0x08))
+
+        /** Frame AAC-LC mono de silêncio (1024 amostras), gerado e conferido com o encoder do ffmpeg. */
+        val SILENT_FRAME = byteArrayOf(0x01, 0x18, 0x20, 0x07)
+
         val SAMPLE_RATES = intArrayOf(
             96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350
         )

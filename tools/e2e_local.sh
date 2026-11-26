@@ -32,7 +32,7 @@ sleep 1
 
 # 2) Fonte de vídeo/áudio da câmera
 if [ "$PROFILE" = "yoosee" ]; then
-  W=1920; H=2160; FPS=15; VCODEC=hevc; ACODEC=none
+  W=1920; H=2160; FPS=15; VCODEC=hevc; ACODEC=aac  # G.711 é descartado; o motor envia AAC de silêncio
   VENC=(-c:v libx265 -preset veryfast -x265-params "log-level=error:keyint=30:bframes=0")
   AENC=(-c:a pcm_alaw -ar 16000 -ac 1)
 else

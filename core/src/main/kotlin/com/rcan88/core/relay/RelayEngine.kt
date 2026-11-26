@@ -22,6 +22,11 @@ data class RelayConfig(
     /** rtmp(s)://servidor/app/chave — para o YouTube: rtmps://a.rtmps.youtube.com/live2/<chave> */
     val targetUrl: String,
     val enableAudio: Boolean = true,
+    /**
+     * Se a câmera não fornecer áudio AAC (ou o áudio estiver desligado), envia uma trilha AAC
+     * de silêncio. O YouTube costuma não iniciar a live ("Não há dados") sem trilha de áudio.
+     */
+    val silentAudioIfMissing: Boolean = true,
     /** Fábrica de sockets da câmera (no Android: rede Wi-Fi). */
     val sourceSocketFactory: SocketFactory = SocketFactory.getDefault(),
     /** Fábrica de sockets da internet (no Android: rede de dados móveis). */
@@ -175,6 +180,8 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
         var baseTs = -1L
         var lastVideoTs = 0L
         var lastAudioTs = 0L
+        var silence = false
+        var silenceSamples = 0L
 
         var statWindowStart = System.nanoTime()
         var statBytesStart = 0L
@@ -213,9 +220,12 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
                         )
                         rtmp = publisher
                         publisher.connect()
-                        publisher.sendMetadata(FlvTags.metadata(vcfg, audioCfg))
+                        silence = audioCfg == null && config.silentAudioIfMissing
+                        if (silence) listener.onLog("Câmera sem áudio AAC: enviando trilha de silêncio")
+                        val outAudio = if (silence) AudioConfig.SILENT_CONFIG else audioCfg
+                        publisher.sendMetadata(FlvTags.metadata(vcfg, outAudio))
                         publisher.sendVideo(FlvTags.videoSequenceHeader(vcfg), 0)
-                        audioCfg?.let { publisher.sendAudio(FlvTags.aacSequenceHeader(it), 0) }
+                        outAudio?.let { publisher.sendAudio(FlvTags.aacSequenceHeader(it), 0) }
                         baseTs = item.frame.ptsMs
                         liveSinceMs = System.currentTimeMillis()
                         statBytesStart = publisher.bytesSent
@@ -225,12 +235,18 @@ class RelayEngine(private val config: RelayConfig, private val listener: RelayLi
                     }
                     val ts = maxOf(item.frame.ptsMs - baseTs, lastVideoTs)
                     lastVideoTs = ts
+                    if (silence) { // áudio de silêncio acompanhando o relógio do vídeo
+                        while (silenceSamples * 1000 / 44_100 <= ts) {
+                            publisher.sendAudio(FlvTags.aacFrame(AudioConfig.SILENT_FRAME), silenceSamples * 1000 / 44_100)
+                            silenceSamples += 1024
+                        }
+                    }
                     publisher.sendVideo(FlvTags.videoFrame(vcfg.codec, item.frame.nalus, item.frame.keyframe), ts)
                     statFrames++
                 }
                 is Item.Audio -> {
                     val p = publisher ?: continue
-                    if (audioCfg == null) continue
+                    if (audioCfg == null || silence) continue
                     val rel = item.frame.ptsMs - baseTs
                     if (rel < 0) continue
                     val ts = maxOf(rel, lastAudioTs)
