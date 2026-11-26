@@ -79,5 +79,5 @@ Ou pelo VLC: *Mídia → Abrir fluxo de rede* → cole a URL → *Ferramentas �
 
 | Modelo | Firmware | URL RTSP | Vídeo | Áudio | Live 30 min OK? | Consumo (W) | Observações |
 |---|---|---|---|---|---|---|---|
-| Yoosee dupla lente (Casa01) | 38.2.91 | `/onvif1` | H.265 1920×2160 15 fps | G.711 A-law 16 kHz | ⏳ | | RTSP OK no VLC; não atualizar firmware antes de testar; TCP a confirmar |
+| Yoosee dupla lente (Casa01) | 38.2.91 | `/onvif1` | H.265 1920×2160 15 fps | G.711 A-law 16 kHz | ⏳ | | RTSP sobre TCP OK; **YouTube aceitou H.265 via RTMPS (estado LIVE)** a partir do PC; não atualizar firmware antes de testar |
 | | | | | | | | |

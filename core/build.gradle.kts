@@ -26,7 +26,6 @@ dependencies {
 application {
     // Permite rodar o mesmo motor de retransmissão num PC / Raspberry Pi (sem Android).
     mainClass.set("com.rcan88.core.cli.MainKt")
-    applicationDefaultJvmArgs = listOf("-Dstdout.encoding=UTF-8", "-Dfile.encoding=UTF-8")
 }
 
 tasks.test {
