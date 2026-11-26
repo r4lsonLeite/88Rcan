@@ -55,6 +55,6 @@ bitrate **CBR** de 60–70 % do upload disponível. Detalhes e URLs por fabrican
 ## Situação
 
 - ✅ Motor validado localmente: testes unitários e pipeline ponta a ponta — H.264 720p30 + AAC e H.265 1920×2160 15 fps (perfil Yoosee) — com 0 erros de decodificação, e reconexão automática após queda do servidor.
-- ✅ Câmera Yoosee real (H.265 1920×2160 + G.711) → motor no PC (Windows) → **YouTube via RTMPS: chegou ao estado LIVE**. Falta validar duração e saúde do stream no Studio.
+- ✅ **Primeira live real no YouTube:** câmera Yoosee (H.265 1920×2160 + G.711) → motor no PC (Windows) → YouTube via RTMPS, com trilha AAC de silêncio (sem ela o Studio ficava em "Não há dados").
 - ⚠️ App Android escrito mas **ainda não compilado/testado em aparelho** (o ambiente de desenvolvimento não tinha o Android SDK). Primeira tarefa da Fase 3 do roteiro.
 - ⏳ Testes com câmera real, YouTube e 4G: ver [roteiro](docs/roteiro-de-testes.md).

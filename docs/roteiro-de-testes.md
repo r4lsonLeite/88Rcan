@@ -8,8 +8,8 @@ Cada fase tem um **critério de saída**: só avance quando ele for atingido.
 | 2 | Definir requisitos de câmera | ✅ [cameras-compativeis.md](cameras-compativeis.md) |
 | 3 | Listar equipamentos | ✅ [equipamentos.md](equipamentos.md) |
 | 4 | Motor RTSP → RTMP (`core`) | ✅ implementado, testes unitários + ponta a ponta |
-| 5 | Validar com câmera real no PC | ⏳ Fase 1 |
-| 6 | Validar no YouTube a partir do PC | ⏳ Fase 2 |
+| 5 | Validar com câmera real no PC | ✅ Yoosee H.265 via RTSP/TCP |
+| 6 | Validar no YouTube a partir do PC | ✅ live real no ar (H.265 + AAC de silêncio) |
 | 7 | App Android (serviço, rede, energia) | ✅ código inicial — compilar no Android Studio |
 | 8 | Interface de operação | ✅ código inicial — validar em campo (Fase 3) |
 | 9 | Testar com internet móvel | ⏳ Fase 4 |
@@ -50,6 +50,9 @@ cd core && ./gradlew test       # testes unitários (SDP, RTP, H.264, AAC, AMF0,
 
 **Saída:** 10 min sem alertas graves no Studio; latência e imagem aceitáveis.
 Alerta comum: *"intervalo de keyframe"* → ajuste o GOP da câmera para 2 s.
+
+> Lição aprendida: com stream **só de vídeo** o YouTube aceita a conexão mas fica em *"Não há dados"*.
+> Por isso o motor envia uma trilha AAC de silêncio quando a câmera não tem áudio AAC.
 
 ## Fase 3 — App no celular, Wi-Fi
 
